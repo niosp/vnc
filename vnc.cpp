@@ -75,7 +75,12 @@ std::vector<unsigned char> compress_to_jpeg(HBITMAP h_bitmap, int width, int hei
 }
 
 void send_image(SOCKET client_socket, const std::vector<unsigned char>& jpeg_data) {
+    int data_size = jpeg_data.size();
     
+    /* send size of image first, then the image data */
+    send(client_socket, reinterpret_cast<const char*>(&data_size), sizeof(data_size), 0);
+    send(client_socket, reinterpret_cast<const char*>(jpeg_data.data()), data_size, 0);
+}
 }
 
 int main() {

@@ -4,6 +4,35 @@
 #include <iostream>
 #include <vector>
 
+HBITMAP decompress_jpeg_to_bitmap(const std::vector<unsigned char>& jpeg_data, int& width, int& height) {
+    jpeg_decompress_struct cinfo;
+    jpeg_error_mgr jerr;
+    cinfo.err = jpeg_std_error(&jerr);
+    jpeg_create_decompress(&cinfo);
+
+    /* input from memory buffer */
+    jpeg_mem_src(&cinfo, jpeg_data.data(), jpeg_data.size());
+    jpeg_read_header(&cinfo, TRUE);
+    jpeg_start_decompress(&cinfo);
+
+    width = cinfo.output_width;
+    height = cinfo.output_height;
+    int row_stride = width * cinfo.output_components;
+
+    std::vector<unsigned char> buffer(row_stride * height);
+    while (cinfo.output_scanline < height) {
+        unsigned char* row_pointer = buffer.data() + cinfo.output_scanline * row_stride;
+        jpeg_read_scanlines(&cinfo, &row_pointer, 1);
+    }
+
+    jpeg_finish_decompress(&cinfo);
+    jpeg_destroy_decompress(&cinfo);
+
+    /* create a bitmap from the decompressed data */
+    HBITMAP h_bitmap = CreateBitmap(width, height, 1, 24, buffer.data());
+    return h_bitmap;
+}
+
 std::vector<unsigned char> receive_image(SOCKET server_socket) {
     int data_size;
 
@@ -32,6 +61,22 @@ HWND create_window(HINSTANCE h_instance, int width, int height) {
     return hwnd;
 }
 
+void display_bitmap(HBITMAP h_bitmap, HWND hwnd) {
+    /* get window DC! */
+    HDC hdc_window = GetDC(hwnd);
+    HDC hdc_mem = CreateCompatibleDC(hdc_window);
+    SelectObject(hdc_mem, h_bitmap);
+
+    BITMAP bitmap;
+    GetObject(h_bitmap, sizeof(BITMAP), &bitmap);
+
+    /* copy the bitmap to the window */
+    BitBlt(hdc_window, 0, 0, bitmap.bmWidth, bitmap.bmHeight, hdc_mem, 0, 0, SRCCOPY);
+
+    ReleaseDC(hwnd, hdc_window);
+    DeleteDC(hdc_mem);
+}
+
 int main(HINSTANCE h_instance, HINSTANCE, LPSTR, int) {
     /* init winsock */
     WSADATA wsa_data;
@@ -56,11 +101,18 @@ int main(HINSTANCE h_instance, HINSTANCE, LPSTR, int) {
     HWND hwnd = create_window(h_instance, width, height);
 
     while (true) {
-        /* receive a jpeg image */
+        /* receive the jpeg image */
         std::vector<unsigned char> jpeg_data = receive_image(client_socket);
 
         /* decompress jpeg to bitmap */
-        // todo: !
+        HBITMAP h_bitmap = decompress_jpeg_to_bitmap(jpeg_data, width, height);
+
+        SetWindowPos(hwnd, NULL, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
+
+        DeleteObject(h_bitmap);
+
+        /* break if there's no more data to send */
+        if (GetMessage(NULL, NULL, 0, 0) == 0) break;
     }
 
     /* close the sockets, cleanup! */
