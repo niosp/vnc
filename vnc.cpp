@@ -53,6 +53,20 @@ std::vector<unsigned char> compress_to_jpeg(HBITMAP h_bitmap, int width, int hei
     int row_stride = width * 3;
     std::vector<JSAMPLE> image_data(row_stride * height);
 
+    HDC hdc = CreateCompatibleDC(NULL);
+    SelectObject(hdc, h_bitmap);
+    BITMAPINFOHEADER bmi = { sizeof(BITMAPINFOHEADER), width, -height, 1, 24, BI_RGB, 0, 0, 0, 0, 0 };
+    GetDIBits(hdc, h_bitmap, 0, height, image_data.data(), (BITMAPINFO*)&bmi, DIB_RGB_COLORS);
+    DeleteDC(hdc);
+
+    while (cinfo.next_scanline < cinfo.image_height) {
+        JSAMPROW row_pointer = &image_data[cinfo.next_scanline * row_stride];
+        jpeg_write_scanlines(&cinfo, &row_pointer, 1);
+    }
+
+    jpeg_finish_compress(&cinfo);
+    jpeg_destroy_compress(&cinfo);
+
     /* save to vector */
     jpeg_data.assign(buffer, buffer + size);
     free(buffer);
@@ -61,7 +75,7 @@ std::vector<unsigned char> compress_to_jpeg(HBITMAP h_bitmap, int width, int hei
 }
 
 void send_image(SOCKET client_socket, const std::vector<unsigned char>& jpeg_data) {
-    /* todo: work in progress! */
+    
 }
 
 int main() {
@@ -75,8 +89,10 @@ int main() {
     /* server address setup */
     sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(8080); // todo: get port from argv
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    /* address and port are from argument 1 and 2 */
+    server_addr.sin_port = htons(std::stoi(argv[2]));
+    server_addr.sin_addr.s_addr = inet_addr(argv[1]);
 
     /* connect to the client */
     connect(client_socket, (sockaddr*)&server_addr, sizeof(server_addr));
@@ -95,8 +111,6 @@ int main() {
 
         /* clean up */
         DeleteObject(h_bitmap);
-
-        Sleep(1000);
     }
 
     /* free allocated resoures */
