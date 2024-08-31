@@ -121,6 +121,10 @@ int main() {
     /* connect to the client */
     connect(client_socket, (sockaddr*)&server_addr, sizeof(server_addr));
 
+    /* start time: before processing images (used to calculate the fps later on) */
+    int frame_count = 0;
+    auto start_time = std::chrono::high_resolution_clock::now();
+
     while (true) {
         int width, height;
 
@@ -141,11 +145,18 @@ int main() {
 
         int result = select(0, &read_fds, NULL, NULL, &timeout);
         if (result > 0 && FD_ISSET(client_socket, &read_fds)) {
-            char key;
-            recv(client_socket, &key, sizeof(key), 0);
+            char buffer[sizeof(MouseEvent)];
+            recv(client_socket, buffer, sizeof(buffer), 0);
 
-            /* simulate keystroke on server */
-            simulate_keystroke(key);
+            MouseEvent* event = reinterpret_cast<MouseEvent*>(buffer);
+
+            /* simulate keystroke or mouse event on server */
+            if (event->u_msg >= WM_MOUSEFIRST && event->u_msg <= WM_MOUSELAST) {
+                simulate_mouse_event(event->x, event->y, event->w_param, event->u_msg);
+            }
+            else {
+                simulate_keystroke(static_cast<char>(event->w_param));
+            }
         }
 
         /* sleep for 10 milliseconds. good practice otherwise the buffers can be flooded */
@@ -153,6 +164,20 @@ int main() {
 
         /* clean up */
         DeleteObject(h_bitmap);
+
+        frame_count++;
+
+        /* calculate and print fps every 10 seconds (prints to console) */
+        auto current_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = current_time - start_time;
+        if (elapsed.count() >= 10.0) {
+            double fps = frame_count / elapsed.count();
+            std::cout << "FPS: " << fps << std::endl;
+
+            /* reset counter and timer */
+            frame_count = 0;
+            start_time = current_time;
+        }
     }
 
     /* free allocated resoures */

@@ -83,12 +83,21 @@ void send_keystroke(SOCKET client_socket, WPARAM w_param) {
     send(client_socket, &key, sizeof(key), 0);
 }
 
-LRESULT CALLBACK window_proc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param, SOCKET client_socket) {
-    /* switch over the window events */
+LRESULT CALLBACK window_proc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param) {
+    SOCKET client_socket;
+
     switch (u_msg) {
     case WM_KEYDOWN:
-        /* send keystroke to server (only one every time) */
+        /* send keystroke to server */
         send_keystroke(client_socket, w_param);
+        break;
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+        /* send mouse events to server */
+        send_mouse_event(client_socket, GET_X_LPARAM(l_param), GET_Y_LPARAM(l_param), w_param, u_msg);
         break;
     case WM_CREATE:
         client_socket = *(SOCKET*)((CREATESTRUCT*)l_param)->lpCreateParams;
@@ -98,6 +107,19 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_par
         break;
     }
     return DefWindowProc(hwnd, u_msg, w_param, l_param);
+}
+
+void send_mouse_event(SOCKET client_socket, int x, int y, WPARAM w_param, UINT u_msg) {
+    /* mouse event consists of x and y relative coordinates, u_msg and param section */
+    struct mouse_event {
+        int x;
+        int y;
+        WPARAM w_param;
+        UINT u_msg;
+    } event = { x, y, w_param, u_msg };
+
+    /* send the data over the network, data is stuctured like above (struct mouse_event) */
+    send(client_socket, reinterpret_cast<char*>(&event), sizeof(event), 0);
 }
 
 
