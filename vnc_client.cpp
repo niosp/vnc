@@ -48,7 +48,7 @@ std::vector<unsigned char> receive_image(SOCKET server_socket) {
 
 HWND create_window(HINSTANCE h_instance, int width, int height) {
     WNDCLASS wc = { 0 };
-    wc.lpfnWndProc = DefWindowProc;
+    wc.lpfnWndProc = window_proc;
     wc.hInstance = h_instance;
     wc.lpszClassName = "VNCClientWindowClass";
     RegisterClass(&wc);
@@ -76,6 +76,30 @@ void display_bitmap(HBITMAP h_bitmap, HWND hwnd) {
     ReleaseDC(hwnd, hdc_window);
     DeleteDC(hdc_mem);
 }
+
+void send_keystroke(SOCKET client_socket, WPARAM w_param) {
+    /* sends the keystrokes to vnc server which then processes them */
+    char key = static_cast<char>(w_param);
+    send(client_socket, &key, sizeof(key), 0);
+}
+
+LRESULT CALLBACK window_proc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param, SOCKET client_socket) {
+    /* switch over the window events */
+    switch (u_msg) {
+    case WM_KEYDOWN:
+        /* send keystroke to server (only one every time) */
+        send_keystroke(client_socket, w_param);
+        break;
+    case WM_CREATE:
+        client_socket = *(SOCKET*)((CREATESTRUCT*)l_param)->lpCreateParams;
+        break;
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        break;
+    }
+    return DefWindowProc(hwnd, u_msg, w_param, l_param);
+}
+
 
 int main(HINSTANCE h_instance, HINSTANCE, LPSTR, int) {
     /* init winsock */
@@ -111,8 +135,14 @@ int main(HINSTANCE h_instance, HINSTANCE, LPSTR, int) {
 
         DeleteObject(h_bitmap);
 
-        /* break if there's no more data to send */
-        if (GetMessage(NULL, NULL, 0, 0) == 0) break;
+        while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+            if (msg.message == WM_QUIT) break;
+        }
+
+        /* window quit message received -> terminate REPL */
+        if (msg.message == WM_QUIT) break;
     }
 
     /* close the sockets, cleanup! */

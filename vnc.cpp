@@ -14,7 +14,7 @@ HBITMAP capture_screen(int& width, int& height) {
     HBITMAP h_bitmap = CreateCompatibleBitmap(hdc_screen, width, height);
     SelectObject(hdc_mem, h_bitmap);
 
-    /* copy screen to memory */
+    /* copy screen to memory (use BitBlt from WinAPI) */
     BitBlt(hdc_mem, 0, 0, width, height, hdc_screen, 0, 0, SRCCOPY);
 
     DeleteDC(hdc_mem);
@@ -37,10 +37,11 @@ std::vector<unsigned char> compress_to_jpeg(HBITMAP h_bitmap, int width, int hei
     jpeg_create_compress(&cinfo);
 
     /* output to memory buffer */
-    unsigned char* buffer = nullptr;
+    unsigned char* mem_buf = nullptr;
     unsigned long size = 0;
-    jpeg_mem_dest(&cinfo, &buffer, &size);
+    jpeg_mem_dest(&cinfo, mem_buf, &size);
 
+    /* set image parameters, set colorspace */
     cinfo.image_width = width;
     cinfo.image_height = height;
     cinfo.input_components = 3;
@@ -64,13 +65,15 @@ std::vector<unsigned char> compress_to_jpeg(HBITMAP h_bitmap, int width, int hei
         jpeg_write_scanlines(&cinfo, &row_pointer, 1);
     }
 
+    /* finish compression */
     jpeg_finish_compress(&cinfo);
     jpeg_destroy_compress(&cinfo);
 
     /* save to vector */
-    jpeg_data.assign(buffer, buffer + size);
-    free(buffer);
+    jpeg_data.assign(mem_buf, mem_buf + size);
+    free(mem_buf);
 
+    /* the vector with compressed bitmap of screen contents */
     return jpeg_data;
 }
 
@@ -81,7 +84,23 @@ void send_image(SOCKET client_socket, const std::vector<unsigned char>& jpeg_dat
     send(client_socket, reinterpret_cast<const char*>(&data_size), sizeof(data_size), 0);
     send(client_socket, reinterpret_cast<const char*>(jpeg_data.data()), data_size, 0);
 }
+
+void simulate_keystroke(char key) {
+    /* prepare WinAPI input types */
+    INPUT input = { 0 };
+    input.type = INPUT_KEYBOARD;
+    input.ki.wVk = VkKeyScan(key);
+
+    /* send key down */
+    SendInput(1, &input, sizeof(INPUT));
+
+    /* key up event */
+    input.ki.dwFlags = KEYEVENTF_KEYUP;
+
+    /* send key up (key got released) */
+    SendInput(1, &input, sizeof(INPUT));
 }
+
 
 int main() {
     /* init winsock! */
@@ -113,6 +132,24 @@ int main() {
 
         /* send jpeg to the client */
         send_image(client_socket, jpeg_data);
+
+        /* check if there's incoming keystrokes (read them from the socket) */
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(client_socket, &read_fds);
+        timeval timeout = { 0, 1000 };
+
+        int result = select(0, &read_fds, NULL, NULL, &timeout);
+        if (result > 0 && FD_ISSET(client_socket, &read_fds)) {
+            char key;
+            recv(client_socket, &key, sizeof(key), 0);
+
+            /* simulate keystroke on server */
+            simulate_keystroke(key);
+        }
+
+        /* sleep for 10 milliseconds. good practice otherwise the buffers can be flooded */
+        Sleep(10);
 
         /* clean up */
         DeleteObject(h_bitmap);

@@ -18,5 +18,8 @@
     <ClCompile Include="vnc.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="vnc_client.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
