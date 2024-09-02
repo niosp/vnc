@@ -11,3 +11,7 @@ This repo contains a simple vnc software
 
 ## How to build
 Install msvc and msbuild, import the project and execute the final binaries. Please note, this tool is currently in beta thus keyboard and mouse emulation is still very buggy.
+
+## How does it look like
+Looks buggy because it captures the same screen the window is displayed on, if you use client and server on different devices, everything should work. 
+![VNC preview](image.png)
